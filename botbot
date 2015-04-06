@@ -1,0 +1,148 @@
+#!/usr/bin/env python
+
+# A jokebot-based IRC bot that makes snarky comments about the falls of other users and bots.
+
+#  By zippynk. https://github.com/zippynk/botbot
+#  Based on Hardmath123's jokebot. https://github.com/hardmath123/jokebot
+
+# Usage: botbot <host> <channel (no #)> [--ssl|--plain] <nick> [--readconfig]
+
+# The `--readconfig` flag reads all other data from the file titled `config.json` in the same directory as botbot. This installation should contain an example configuration file, titled `config_example.json`.
+# The `--password` flag prompts the user for a password when starting botbot. Note that you may not be able to see the password as you type it, and that this can interfere with running botbot in a location where you cannot actively input text. Does not run with `--readconfig`, as it does not apply there; the `config.json` file has an option for a password.
+
+#  This Source Code Form is subject to the terms of the Mozilla Public
+#  License, v. 2.0. If a copy of the MPL was not distributed with this
+#  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+import socket
+import select
+import random
+import ssl
+import sys
+import time
+import getpass
+import os
+
+if "/" in __file__:
+    configLocation = os.path.dirname(__file__) +"/config.json"
+else:
+    configLocation = "config.json"
+thisVersion = [0,1,0,"d"] # The version of botbot, as a list of numbers (eg [0,1,0] means "v0.1.0"). A "d" at the end means that the current version is a development version and very well may break at some point.
+
+# Begin dev edition code.
+if "d" in thisVersion:
+    print "WARNING! This is a development version of botbot. Proceeding may corrupt botbot database files, crash, and/or have other consequences. Proceed at your own risk."
+    if not raw_input("Are you sure you want to proceed? (y/n) ").lower() in ["yes","y","true","continue","yea","yeah","yup","sure"]:
+        print "Aborting."
+        exit(0)
+
+# End Dev Edition Code.
+
+if (len(sys.argv) < 5 or len(sys.argv) > 6) and not "--readconfig" in sys.argv:
+    print """Usage: botbot <host> <channel (no #)> [--ssl|--plain] <nick> [--readconfig]
+
+The `--readconfig` flag reads all other data from the file titled `config.json` in the same directory as botbot. This installation should contain an example configuration file, titled `config_example.json`.
+The `--password` flag prompts the user for a password when starting botbot. Note that you may not be able to see the password as you type it, and that this can interfere with running botbot in a location where you cannot actively input text. Does not run with `--readconfig`, as it does not apply there; the `config.json` file has an option for a password."""
+    exit(0)
+
+if "--readconfig" in sys.argv:
+    if os.path.isfile(configLocation):
+        try:
+            config = json.loads(open(configLocation,'r').read())
+        except:
+            print "Failed to decode configuration file."
+            if "d" in thisVersion:
+                print str(sys.exc_info()[0])
+            exit(0)
+        try:
+            HOST = str(config["server"])
+            if len(config["channels"]) > 1:
+                print "botbot only supports joining one channel at a time. Exiting."
+                exit(0)
+            else:
+                CHANNEL = str(config["channels"][0])
+            SSL = config["use_ssl"]
+            NICK = config["nickname"]
+        except KeyError, e:
+            print "Failed to decode configuration file."
+            if "d" in thisVersion:
+                print e
+            exit(0)
+        if "nick-password" in config.keys():
+            PASSWORD = config["nick-password"]
+        else:
+            PASSWORD = False
+        PORT = 6697 if SSL else 1338
+    else:
+        print "Failed to decode configuration file."
+        if "d" in thisVersion:
+            print "File " +configLocation +" does not exist."
+        exit(0)
+
+else:
+    HOST = sys.argv[1]
+    CHANNEL = "#"+sys.argv[2]
+    SSL = sys.argv[3].lower() == '--ssl'
+    PORT = 6697 if SSL else 1338
+
+    NICK = sys.argv[4]
+    
+    if "--password" in sys.argv:
+        PASSWORD = getpass.getpass("Password? ")
+    else:
+        PASSWORD = False
+plain = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s = ssl.wrap_socket(plain) if SSL else plain
+
+print "Connecting..."
+
+s.connect((HOST, PORT))
+def read_loop(callback):
+    data = ""
+    CRLF = '\r\n'
+    while True:
+        time.sleep(0.2)
+        try:
+            readables, writables, exceptionals = select.select([s], [s], [s]) 
+            if len(readables) == 1:
+                data += s.recv(512);
+                while CRLF in data:
+                    message = data[:data.index(CRLF)]
+                    data = data[data.index(CRLF)+2:]
+                    callback(message)
+        except KeyboardInterrupt:
+            print "Leaving..."
+            s.sendall("PART %s :Bye\r\n"%(CHANNEL))
+            s.close()
+            exit(0)
+
+print "Registering..."
+
+s.sendall("NICK %s\r\n"%("tempnick" +str(random.randint(10000001,99999999))))
+s.sendall("USER %s * * :A metabot\r\n"%(NICK))
+
+
+connected = False
+def got_message(message):
+    print message
+    global connected # yes, bad Python style. but it works to explain the concept, right?
+    words = message.split(' ')
+    if 'PING' in message:
+        s.sendall('PONG\r\n') # it never hurts to do this :)
+    if words[1] == '001' and not connected:
+        # As per section 5.1 of the RFC, 001 is the numeric response for
+        # a successful connection/welcome message.
+        connected = True
+        if not PASSWORD == False:
+            s.sendall("PRIVMSG NickServ :" +"ghost " +NICK +" " +PASSWORD +"\r\n")
+            s.sendall("PRIVMSG NickServ :" +"identify " +NICK +" " +PASSWORD +"\r\n")
+            print "Waiting for NickServ (this will take 10 seconds, and is necessary to make sure other instances are ghosted appropriately)..."
+            time.sleep(10)
+        s.sendall("NICK %s\r\n"%(NICK))
+        s.sendall("JOIN %s\r\n"%(CHANNEL))
+        print "Joining..."
+    elif ("QUIT" in message or "PART" in message or "KICK" in message or "KILL" in message or "SILENCE" in message) and ("bot" in message.lower() or ("KICK" in message or "KILL" in message or "SILENCE" in message)) and not "are supported by this server" in message:
+        # Some bot probably disconnected
+        s.sendall("PRIVMSG %s :"%(CHANNEL) + "ooh" + "\r\n")
+        s.sendall("PRIVMSG %s :"%(CHANNEL) + "burn" + "\r\n")
+read_loop(got_message)
