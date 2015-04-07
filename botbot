@@ -141,7 +141,7 @@ def got_message(message):
         s.sendall("NICK %s\r\n"%(NICK))
         s.sendall("JOIN %s\r\n"%(CHANNEL))
         print "Joining..."
-    elif ("QUIT" in message or "PART" in message or "KICK" in message or "KILL" in message or "SILENCE" in message) and ("bot" in message.lower() or ("KICK" in message or "KILL" in message or "SILENCE" in message)) and not "are supported by this server" in message:
+    elif ("QUIT" in message or "PART" in message or "KICK" in message or "KILL" in message or "SILENCE" in message) and words[2] == CHANNEL and ("bot" in message.lower() or ("KICK" in message or "KILL" in message or "SILENCE" in message)) and not "are supported by this server" in message:
         # Some bot probably disconnected
         s.sendall("PRIVMSG %s :"%(CHANNEL) + "ooh" + "\r\n")
         s.sendall("PRIVMSG %s :"%(CHANNEL) + "burn" + "\r\n")
