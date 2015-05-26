@@ -1,4 +1,6 @@
 # botbot
+
+[![Join the chat at https://gitter.im/zippynk/botbot](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/zippynk/botbot?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 A jokebot-based IRC bot that makes snarky comments about the falls of other users and bots.
 
 By zippynk. https://github.com/zippynk/botbot
